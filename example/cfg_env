@@ -1,0 +1,3 @@
+[env]
+workdir = /hltsrv1/software/online_SMT/example
+tmp = /hltsrv1/software/online_SMT/example

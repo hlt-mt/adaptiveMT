@@ -1,0 +1,4 @@
+[tools]
+aligner_type = Constrained_Search
+aligner_options_extractor_path = /hltsrv1/software/online_SMT/scripts/alignment_by_Constrained_Search/extract-options.pl
+aligner_constrained_search_path = /hltsrv1/software/online_SMT/scripts/alignment_by_Constrained_Search/c-search-d.pl

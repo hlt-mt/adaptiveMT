@@ -1,0 +1,37 @@
+[env]
+workdir = /hltsrv1/software/online_SMT/example
+tmp = /hltsrv1/software/online_SMT/example
+[data]
+source = /hltsrv1/software/online_SMT/example/input.en-it.en
+reference = /hltsrv1/software/online_SMT/example/input.en-it.it
+stopwords_source = /hltsrv1/software/online_SMT/example/stopwords.en
+stopwords_target = /hltsrv1/software/online_SMT/example/stopwords.it
+[decoder]
+source = /hltsrv1/software/online_SMT/example/TM.en-it.en 
+target = /hltsrv1/software/online_SMT/example/TM.en-it.it
+[tools]
+decoder_type = Deterministic
+[tools]
+aligner_type = onlineGIZA
+mgiza_path = /hltsrv1/software/mgiza/mgiza-online.v0.7.2
+[annotation]
+src-trg-gizacfg = /hltsrv1/software/online_SMT/example/en-it.gizacfg
+trg-src-gizacfg = /hltsrv1/software/online_SMT/example/it-en.gizacfg
+giza-options = -m1 0 -m2 0 -m3 0 -m4 3 -m5 0 -mh 0 -restart 11
+sym-align-type = -a=union -d=yes -b=yes -f=yes
+[tools]
+extractor_type = Moses
+extractor_path = /hltsrv1/software/moses/moses-20130226_irstlm_phrasepenalty/bin/extract
+[annotation]
+cbtm_phrase_length = 4
+[tools]
+annotator_type = onlinecache
+[annotation]
+cblm = 1
+cblm_n_gram_level = 4
+cblm_constrained_on_cbtm = 0
+cblm_improved_by_cbtm = 0
+cblm_improved_by_full_sentence = 0
+cblm_filter = 1
+cbtm = 1
+cbtm_filter = 1

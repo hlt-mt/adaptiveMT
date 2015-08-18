@@ -1,0 +1,5 @@
+[tools]
+aligner_type = IBM1
+[annotation]
+source2target_lexicon = /hltsrv1/models_for_testing/moses/MODELS-fortesting-en-it/lex.en-it 
+target2source_lexicon = /hltsrv1/models_for_testing/moses/MODELS-fortesting-en-it/lex.it-en

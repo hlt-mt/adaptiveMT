@@ -1,0 +1,6 @@
+[decoder]
+path = /hltsrv1/software/moses/moses-20130226_irstlm_phrasepenalty/bin/moses
+ini = /hltsrv1/software/online_SMT/example/moses.ini
+options = -print-translation-option true 
+[tools]
+decoder_type = Moses

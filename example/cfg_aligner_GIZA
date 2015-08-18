@@ -1,0 +1,8 @@
+[tools]
+aligner_type = GIZA
+aligner_path = /hltsrv1/software/online_SMT/scripts/alignment_by_GIZA/Aligner.sh
+mgiza_path = /hltsrv1/software/mgiza/mgizapp-0.7.3
+[annotation]
+src-trg-gizacfg = /hltsrv1/software/online_SMT/example/en-it.gizacfg
+trg-src-gizacfg = /hltsrv1/software/online_SMT/example/it-en.gizacfg
+sym-align-type = intersect

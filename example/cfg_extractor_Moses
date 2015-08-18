@@ -1,0 +1,5 @@
+[tools]
+extractor_type = Moses
+extractor_path = /hltsrv1/software/moses/moses-20130226_irstlm_phrasepenalty/bin/extract
+[annotation]
+cbtm_phrase_length = 4

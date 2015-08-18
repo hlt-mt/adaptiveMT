@@ -1,0 +1,8 @@
+[tools]
+aligner_type = onlineGIZA
+mgiza_path = /hltsrv1/software/mgiza/mgiza-online.v0.7.2
+[annotation]
+src-trg-gizacfg = /hltsrv1/software/online_SMT/example/en-it.gizacfg
+trg-src-gizacfg = /hltsrv1/software/online_SMT/example/it-en.gizacfg
+giza-options = -m1 0 -m2 0 -m3 0 -m4 3 -m5 0 -mh 0 -restart 11
+sym-align-type = -a=union -d=yes -b=yes -f=yes

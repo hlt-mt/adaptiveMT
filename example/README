@@ -1,0 +1,40 @@
+
+# create a complete configuration file "cfg_complete" by concatenating
+# - cfg_env
+# - cfg_data
+# - either 	"cfg_decoder_Deterministic
+# - or 		"cfg_decoder_Moses"
+# - or 		"cfg_decoder_Moses_nbest"
+# - either    	"cfg_aligner_Constrained_Search"
+# - or        	"cfg_aligner_GIZA"
+# - or        	"cfg_aligner_onlineGIZA"
+# - or        	"cfg_aligner_IBM1"
+# - either    	"cfg_extractor_Constrained_Search"
+# - or	      	"cfg_extractor_Moses" 
+# - either  	"cfg_annotator_onlinexml"
+# - or        	"cfg_annotator_onlinecache"
+#
+# Important: Note that if you use the aligner "cfg_extractor_Moses" and the phrase extractor "cfg_extractor_Constrained_Search"
+# have to be used always together
+#
+# Here are sone example  of possible combinations
+# like for example:
+cat cfg_env cfg_data cfg_decoder_Moses cfg_aligner_Constrained_Search cfg_extractor_Constrained_Search cfg_annotator_onlinexml  > cfg_complete
+# or
+cat cfg_env cfg_data cfg_decoder_Moses cfg_aligner_GIZA cfg_extractor_Moses cfg_annotator_onlinexml  > cfg_complete
+# or
+cat cfg_env cfg_data cfg_decoder_Moses cfg_aligner_IBM1 cfg_extractor_Moses cfg_annotator_onlinexcache  > cfg_complete
+# or
+cat cfg_env cfg_data cfg_decoder_Moses cfg_aligner_onlineGIZA cfg_extractor_Moses cfg_annotator_onlinecache  > cfg_complete
+# or
+cat cfg_env cfg_data cfg_decoder_Moses_nbest cfg_aligner_IBM1 cfg_extractor_Moses cfg_annotator_onlinecache  > cfg_complete
+
+# edit the complete configuration file "cfg_complete" with the actual data and executables
+
+# run the wrapper for the online translation
+python ../scripts/wrapper_onlineSMT.py cfg_complete
+
+# Important Notes:
+# - if you use the aligner "cfg_extractor_Moses" and the phrase extractor "cfg_extractor_Constrained_Search" have to be used always together
+# - if you use "cfg_decoder_Moses_nbest", you can send the nbest translation onto stdout by specifying the fopllowing in the decoder section:
+#   nbestfile = -

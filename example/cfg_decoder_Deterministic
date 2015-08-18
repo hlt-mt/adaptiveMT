@@ -1,0 +1,5 @@
+[decoder]
+source = /hltsrv1/software/online_SMT/example/TM.en-it.en 
+target = /hltsrv1/software/online_SMT/example/TM.en-it.it
+[tools]
+decoder_type = Deterministic
