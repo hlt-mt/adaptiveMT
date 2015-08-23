@@ -7,7 +7,6 @@ from sklearn.linear_model import SGDClassifier, Perceptron
 from sklearn.linear_model import PassiveAggressiveClassifier
 from sklearn import linear_model
 import sklearn
-import nltk
 import collections
 import re
 import math
@@ -60,34 +59,21 @@ class Bleu:
 
 class Tuning:
 	def __init__(self, parser):
-	    self.numIter=1
 	    self.C = 1
 	    self.time = 0
 	    self.numSamples = 15
 	    self.learning_rate = 0.1
 	    self.learning_rate = float(parser.get('tuning', 'learningrate'))
-	    self.numIter = int(parser.get('tuning', 'iterations'))
-	    self.C = float(parser.get('tuning', 'C'))
-	    self.loss = parser.get('tuning', 'loss')
-	    self.numUpdates = 0
-	    self.alpha = 0.01
-	    self.slack = 0.001
-	    self.features=[]
-	    self.model_scores=[]
 	    self.weights_init=[]
+	    self.sigma_init=[]
+	    self.sparseSigma=[]
 	    self.labels=[]
-	    self.sigma = np.zeros(1000).tolist()
+	    self.numCoreFeatures=0
 	    self.initFeaturesDict=[]
-	    self.algorithm = parser.get('tuning', 'algorithm')
-	    if self.algorithm == "SGD":
-		self.classifier = sklearn.linear_model.SGDRegressor(loss='huber', penalty='elasticnet', n_iter=10, warm_start=True, average=True, fit_intercept=True, alpha=0.00001, random_state=1, shuffle=True)
-	    elif self.algorithm == "PA":
-		self.classifier = sklearn.linear_model.PassiveAggressiveRegressor(loss='epsilon_insensitive', C=1, warm_start=True, epsilon=0.0001, n_iter=100, fit_intercept=True)
-	    elif self.algorithm == "AdaGrad":
-		self.classifier = AdaGrad(loss="hinge", C=1, epsilon=0.001, n_iter=100, fit_intercept=True)
-#sklearn.linear_model.PassiveAggressiveRegressor(loss='epsilon_insensitive', C=1, warm_start=True, epsilon=0.0001, n_iter=100, fit_intercept=True)
-
-
+	    self.initFeaturesMap={}
+	    self.active_sparse_feats={}
+	    self.sparseFeaturesMap={}
+	    self.sparseFeatures=[]
 
 	def annotate(self):
 	    weig_ann = "<weight-overwrite weights=\"";
@@ -96,27 +82,19 @@ class Tuning:
 	    values=[]
 	    curr_values=[]
 	    for name, values in self.initFeaturesDict:
-		    curr_values = weights[offset:offset+len(values)]
-		    s =  ' '.join(str(x) for x in curr_values)
-		    weig_ann = weig_ann + name + "= " + s + " "
-		    offset += len(values)
+		curr_values = weights[offset:offset+len(values)]
+		s =  ' '.join(str(x) for x in curr_values)
+		weig_ann = weig_ann + name + "= " + s + " "
+		offset += len(values)
+
+	    for k in self.sparseFeaturesMap:
+		sW = self.getSparseFeatWeightbyName(k)
+		weig_ann = weig_ann + k + "= " + str(sW) + " "
 
 	    weig_ann = weig_ann + "\"></weight-overwrite>";
 	    logging.info("annotation : "+weig_ann)
 	    
 	    return weig_ann
-
-	def read_1best(self, nbest):
-	    self.firstbest = nbest[0]
-            self.firstbest = re.sub(r"^[^\|]+\|\|\|\s*","",firstbest)
-            self.firstbest = re.sub(r"\s*\|\|\|.+$","",firstbest)
-
-#	def bleu(self, hyp, ref):
-#	    hyp_grams = hyp.split()
-#	    ref_grams = ref.split()
-#	    weights = [0.25, 0.25, 0.25, 0.25]
-#	    total = nltk.align.bleu_score.bleu(hyp_grams, ref_grams, weights)
-#	    return total
 
 	# read initial feature list
 	def read_init_features(self, feats):
@@ -130,50 +108,108 @@ class Tuning:
 			prevfeat = f[:-1]
 			continue
 		    self.initFeaturesDict.append((prevfeat, values))
+		    self.initFeaturesMap[prevfeat]=1
 		    prevfeat = f[:-1]
 		    values=[]
 		else:
 		    self.weights_init.append(float(f))
+		    self.sigma_init.append(0)
 		    values.append(float(f))
+		    self.numCoreFeatures += 1
 	    
 	    self.initFeaturesDict.append((prevfeat, values))
+	    self.initFeaturesMap[prevfeat]=1
 	   
 
 	def read_features(self, feats):
-	    features = feats.split()
-	    values=[]
-	    list_feats = {}
+	    features = feats.split() # feature string from nbest list
+	    values=[]	# contains temporary feature values
+	    dense_feats = {} # maps dense features to a list of values
+	    sparse_feats = {}	# contains active sparse features in the nbest candidate
 	    prevfeat=""
+	    count=0
 	    for f in features:
 		if '=' in f:
 		    if len(values) == 0:
 			prevfeat = f[:-1]
 			continue
-		    list_feats[prevfeat] = values
+		    ## check if the feature is a dense or a sparse feature
+		    if not prevfeat in self.initFeaturesMap:
+			sparse_id = self.getSparseFeatID(prevfeat)
+		    ## check if sparse feature exists
+			if sparse_id == -1 :
+			    sparse_id = self.setSparseFeatWeight(prevfeat, 0)
+			sparse_feats[sparse_id] = values[0]
+			self.active_sparse_feats[sparse_id]=1
+		    else:
+			dense_feats[prevfeat] = values
 		    prevfeat = f[:-1]
 		    values=[]
 		else:
 		    values.append(float(f))
+		    count += 1
 
-	    list_feats[prevfeat] = values
+# for the last feature
+	    if not prevfeat in self.initFeaturesMap:
+		sparse_id = self.getSparseFeatID(prevfeat)
+	    ## check if sparse feature exists
+		if sparse_id == -1 :
+		    sparse_id = self.setSparseFeatWeight(prevfeat, 0)
+		sparse_feats[sparse_id] = values[0]
+		self.active_sparse_feats[sparse_id]=1
+	    else:
+		dense_feats[prevfeat] = values
 
 	    features=[]
 	    for k,v in self.initFeaturesDict:
-		features.extend(list_feats[k])
+		features.extend(dense_feats[k])
 
-	    return features
+	    return features, sparse_feats
 	
-	def getFeatId(self, name):
-	    if name in self.initFeaturesDict:
-		return self.initFeaturesDict[name]
-	    # make new feature ID
-	    featureList.append(name)
-	    return len(featureList)
+	def getSparseFeatID(self, name):
+	    if name in self.sparseFeaturesMap:
+		return self.sparseFeaturesMap[name]
+	    return -1
+
+	def getSparseFeatWeightbyName(self, name):
+	    score=-1
+	    if name in self.sparseFeaturesMap:
+		score = self.sparseFeatures[self.sparseFeaturesMap[name]]
+	    return score
+
+	def getSparseFeatWeightbyID(self, id):
+	    score=-1
+	    if id < len(self.sparseFeatures):
+		score = self.sparseFeatures[id]
+	    return score
+
+	def setSparseFeatWeightbyID(self, id, val):
+	    if id < len(self.sparseFeatures):
+		self.sparseFeatures[id] = val
+		return 1
+	    return -1
+
+	def setSparseFeatSigmabyID(self, id, val):
+	    if id < len(self.sparseSigma):
+		self.sparseSigma[id] = val
+		return 1
+	    return -1
+
+	def setSparseFeatWeight(self, name, val):
+	    if name in self.sparseFeaturesMap:
+		id = self.sparseFeaturesMap[name]
+		self.sparseFeatures[id] = val
+		return id
+	    else:
+		self.sparseFeatures.append(val)
+		self.sparseSigma.append(0)
+		self.sparseFeaturesMap[name] = len(self.sparseFeatures)-1
+		return len(self.sparseFeatures)-1
 	
 	def getLearningRate(self):
 	    return self.learning_rate * 2 / (1 + e**(self.time))
 
-	def pro_update(self, prediction, label, features):
+	def pro_update(self, label, features, weights_init, sigma_init):
 	    # sample derivation pairs R times
 	    if len(label) <= self.numSamples*3:
 		return
@@ -182,9 +218,8 @@ class Tuning:
 	    samples = zip(a,b)
 	    # compute log loss from R samples
 	    loss = 0
-	    weights = np.zeros(len(self.weights_init)).tolist()
-	    self.sigma = self.sigma[:len(self.weights_init)]
-	    sigma = np.zeros(len(self.sigma)).tolist()
+	    weights = np.zeros(len(weights_init)).tolist()
+	    sigma = np.zeros(len(sigma_init)).tolist()
 	    for i in xrange(len(samples)):
 		idx_x = int(samples[i][0][0])
 		idx_y = int(samples[i][1][0])
@@ -194,64 +229,55 @@ class Tuning:
 		    idx_y = int(np.random.normal(loc=len(label), scale=len(label)/3))
 		G_x = label[idx_x]
 		G_y = label[idx_y]
-		M_x = prediction[idx_x]
-		M_y = prediction[idx_y]
 		sign = 1
 		if G_x > G_y:
 		    for j in xrange(len(features[0])):
 			diff = features[idx_x][j] - features[idx_y][j]
-			#loss = sign*math.log(1 + math.exp(-1 * self.weights_init[j] * diff))
-			loss = -1 * diff * math.exp(-1 * self.weights_init[j] * diff)
+			loss = -1 * diff * math.exp(-1 * weights_init[j] * diff)
 			sigma[j] += math.pow(loss, 2)
-			if self.sigma[j] > 0:
-			    weights[j] -= self.learning_rate * loss * math.sqrt(1/self.sigma[j])
+			if sigma_init[j] > 0:
+			    weights[j] -= self.learning_rate * loss * math.sqrt(1/sigma_init[j])
 		elif G_x < G_y:
 		    for j in xrange(len(features[0])):
 			diff = features[idx_y][j] - features[idx_x][j]
-			#loss = sign*math.log(1 + math.exp(-1 * self.weights_init[j] * diff))
 			sigma[j] += math.pow(loss, 2)
-			loss = -1 * diff * math.exp(-1 * self.weights_init[j] * diff)
-			if self.sigma[j] > 0:
-			    weights[j] -= self.learning_rate * loss * math.sqrt(1/self.sigma[j])
+			loss = -1 * diff * math.exp(-1 * weights_init[j] * diff)
+			if sigma_init[j] > 0:
+			    weights[j] -= self.learning_rate * loss * math.sqrt(1/sigma_init[j])
 
-	    s =  ' '.join(str(x) for x in weights)
-	    logging.info("AvgUpdate : "+s)
-	    s =  ' '.join(str(x) for x in self.sigma)
-	    logging.info("Sigma : "+s)
 	    for i in xrange(len(weights)):
-		self.weights_init[i] += float(weights[i]/len(samples))
-#		if self.weights_init[i] - self.l1lambda * self.learning_rate > 0:
-#		    self.weights_init[i] -= self.l1lambda * self.learning_rate	
-#		else:
-#		    self.weights_init[i]=0
+		weights_init[i] += float(weights[i]/len(samples))
 	    for i in xrange(len(sigma)):
-		self.sigma[i] += float(sigma[i]/len(samples))
+		sigma_init[i] += float(sigma[i]/len(samples))
 
+	    return weights_init, sigma_init
 
-	    # using FOBOS framework 
-	    # regularize weights
 	    
 	def optimize(self, nbest, pe):
+	    if len(nbest) < 5:
+		return ""
 	    self.time += 1
 	    count=0
 	    self.features=[]
 	    self.model_scores=[]
 	    self.labels=[]
 	    Bleu_obj = Bleu()
+	    self.active_sparse_feats={}
 	    for N in nbest:
 		temp = N
 		temp = re.sub(r"^[^\|]+\|\|\|\s*","",temp)
 		feats = re.sub(r"^[^\|]+\|\|\|\s*","",temp)
-
 		# model scores is a list with size N
 		self.model_scores.append(float(re.sub(r"^[^\|]+\|\|\|\s*","",feats)))
-
 		feats = re.sub(r"\s*\|\|\|.+$","",feats)
-		feat = self.read_features(feats)
-		self.features.append(feat)		    # features is a list of list size N x d
+
+		# crucial step
+		dense_feats, sparse_feats = self.read_features(feats)
+		
+		# features is a list of list size N x d
+		self.features.append((list(dense_feats), sparse_feats.copy()))
 		nbest_ = re.sub(r"\s*\|\|\|.+$","",temp)
 		bleuscore = Bleu_obj.calc_bleu(nbest_, pe)
-#		logging.info("NBEST : "+nbest_+" BLEU : "+str(bleuscore))
 		self.labels.append(bleuscore)		    # label is a list with size N
 		count += 1
 
@@ -261,57 +287,66 @@ class Tuning:
 
 	def optimize_(self, count):
 	    idx=self.labels.index(max(self.labels))
-	    
-	    w = np.asarray(self.model_scores, dtype=np.float64)
-	    X = np.asarray(self.features, dtype=np.float64)
+	    feats=[]
 	    y = np.asarray(self.labels, dtype=np.float64)
-	    
-	    # create a \delta feature array
-	    oracleFeat = X[idx,]
-	    oracleBleu = y[idx,]
-	    oracleModelScore = w[idx,]
-	    logging.info("Oracle Bleu :"+ str(oracleBleu))
-	    logging.info("Index :"+ str(idx))
-	    logging.info("1-Best Features :"+ str(X[0,]))
-	    logging.info("Oracle Features :"+ str(X[idx,]))
-	    deltaFeat = X.copy()
-	    deltaBleu = y.copy()
-	    deltaModelScores = w.copy()
-	    numUpdates=0
-	    maxUpdates=10
-	    s =  ' '.join(str(x) for x in self.weights_init)
-	    logging.info("Weights : "+s) 
-	    coefs = np.asarray(self.weights_init).reshape(1, X.shape[1])
+#size of sparse vector 
+	    size = len(self.active_sparse_feats)
+#	    logging.info("Size of sparse features : "+str(size)) 
+# create an index for sparse vector
+	    index_sparse=[]
+	    for k,v in self.active_sparse_feats.iteritems():
+		index_sparse.append(k)
 
+# create a sparse feature vector and corresponding sparse weight vector
+	    for i in xrange(count):
+		temp_feat_list = list(self.features[i][0])
+		
+		temp_sparse_dict=self.features[i][1]
+		for j in xrange(size):
+# append the value of the sparse feature with index = index_sparse[j]
+		    if index_sparse[j] in temp_sparse_dict:
+			temp_feat_list.append(temp_sparse_dict[index_sparse[j]])
+		    else:
+			temp_feat_list.append(0.)
+		feats.append(temp_feat_list)
+	    X = np.asarray(feats, dtype=np.float64)
+	    
+# create weight and sigma vector from dense and sparse features
+	    W = list(self.weights_init)
+	    S = list(self.sigma_init)
+# extend W with sparse features
+	    for i in xrange(size):
+		W.append(self.sparseFeatures[index_sparse[i]])
+		S.append(self.sparseSigma[index_sparse[i]])
+	    
+#	    logging.info("Best Bleu :"+ str(y[0,]))
+#	    logging.info("1-Best Features :"+ str(X[0,]))
+#	    logging.info("Index :"+ str(idx))
+#	    logging.info("Oracle Bleu :"+ str(y[idx,]))
+#	    logging.info("Oracle Features :"+ str(X[idx,]))
+	    Feat = X.copy()
+	    Bleu = y.copy()
+	    
+#	    s =  ' '.join(str(x) for x in index_sparse)
+#	    logging.info("Sparse Index : "+s) 
+#	    s =  ' '.join(str(x) for x in W)
+#	    logging.info("Weights : "+s) 
+#	    s =  ' '.join(str(x) for x in S)
+#	    logging.info("Sigma : "+s) 
 # Pairwise ranking approach with the logistic loss : same as Green et. al. 2013
-	    self.pro_update(deltaModelScores, deltaBleu, deltaFeat)
-	    s =  ' '.join(str(x) for x in self.weights_init)
-	    logging.info("Weights : "+s) 
+	    weights, sigma = self.pro_update(Bleu, Feat, W, S)
 
-
-
-#######################################################################################
-#	    loss = calc_loss(deltaModelScores, deltaBleu, deltaFeat)
-	    
-
-#	    s =  ' '.join(str(x) for x in y)
-#	    logging.info("Bleu : "+s) 
-#	    s =  ' '.join(str(x) for x in deltaModelScores)
-#	    logging.info("Delta Model Scores : "+s) 
-#	    s =  ' '.join(str(x) for x in loss)
-#	    logging.info("Loss : "+s) 
-#	    self.classifier.fit(deltaFeat, loss, coef_init=coefs)
-#	    self.weights_init= np.transpose(self.classifier.coef_).tolist()
-
-
-# Code I wrote for updating weights .. no theoritical base
-#		loss = deltaModelScores[i] - deltaBleu[i]
-#		logging.info("Model Score diff : "+str(deltaModelScores[i]) + "\t BleuScoreDiff : "+str(deltaBleu[i])+"\tloss : "+str(loss))
-#		if loss > self.slack and numUpdates < maxUpdates:
-#		    numUpdates +=1
-#		    for j in xrange(X.shape[1]):
-#			logging.info("Updating for candidate "+str(i)+ " feature " + str(j) +" with a loss of "+ str(deltaFeat[i,j]) ) 
-#			direction = -1 if deltaFeat[i,j] < 0 else 1 
-#			self.weights_init[j] -= self.alpha * self.slack * direction
+# set weights and sigma for dense and sparse features
+	    self.weights_init = weights[:self.numCoreFeatures]
+	    self.sigma_init = sigma[:self.numCoreFeatures]
+#	    s =  ' '.join(str(x) for x in self.weights_init)
+#	    logging.info("Weights : "+s) 
+#	    s =  ' '.join(str(x) for x in self.sigma_init)
+#	    logging.info("Sigma : "+s) 
+	    for i in xrange(self.numCoreFeatures, len(weights)):
+#		logging.info("Setting weights for "+str(index_sparse[i-self.numCoreFeatures])+" --> "+str(weights[i]))
+#		logging.info("Setting sigma for "+str(index_sparse[i-self.numCoreFeatures])+" --> "+str(sigma[i]))
+		self.setSparseFeatWeightbyID(index_sparse[i-self.numCoreFeatures], weights[i])
+		self.setSparseFeatSigmabyID(index_sparse[i-self.numCoreFeatures], sigma[i])
 
 
