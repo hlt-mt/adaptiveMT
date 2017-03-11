@@ -19,48 +19,51 @@ def usage():
 	sys.stderr.write("./wrapper.py <config.cfg> [-show-weights]\n")
 
 if __name__ == "__main__":
-	if not len(sys.argv) >= 2:
-		usage()
-		sys.exit()
-	else:
+    
+    if not len(sys.argv) >= 2:
+        usage()
+        sys.exit()
+    else:
 		# parse config file
-		parser = SafeConfigParser()
-		parser.read(sys.argv[1])
+        parser = SafeConfigParser()
+        parser.read(sys.argv[1])
 
         showweightsflag = ""
+        
         if len(sys.argv) == 3 and sys.argv[2] == "-show-weights":
-		sys.stderr.write("sys.argv[2]: |%s|\n" % repr(sys.argv[2]))
-                showweightsflag = "-show-weights"
-        parser.set('decoder','showweightsflag',showweightsflag)
+            sys.stderr.write("sys.argv[2]: |%s|\n" % repr(sys.argv[2]))
+            showweightsflag = "-show-weights"
+            parser.set('decoder','showweightsflag',showweightsflag)
 
-	decoder_type = parser.get('tools', 'decoder_type')
-	aligner_type = parser.get('tools', 'aligner_type')
-	extractor_type = parser.get('tools', 'extractor_type')
-	annotator_type = parser.get('tools', 'annotator_type')
-	tuning_switch = parser.get('tuning', 'switch')
+    decoder_type = parser.get('tools', 'decoder_type')
+    aligner_type = parser.get('tools', 'aligner_type')
+    extractor_type = parser.get('tools', 'extractor_type')
+    annotator_type = parser.get('tools', 'annotator_type')
+    tuning_switch = parser.get('tuning', 'switch')
 
-	input = open(parser.get('data', 'source'), 'r')
-	edit = open(parser.get('data', 'reference'), 'r')
+    
+    input = open(parser.get('data', 'source'), 'r')
+    edit = open(parser.get('data', 'reference'), 'r')
+    decoder_options = ''
+    
+    try:
+        decoder_options = self.parser.get('decoder', 'options')
+    except:
+        pass
 
-	decoder_options = ''
-	try:
-            decoder_options = self.parser.get('decoder', 'options')
-        except:
-            pass
-
-        if aligner_type == "Constrained_Search" :
-		decoder_options = decoder_options + " -print-translation-option true"
+    if aligner_type == "Constrained_Search" :
+        decoder_options = decoder_options + " -print-translation-option true"
         parser.set('decoder', 'options', decoder_options) 
 
-	if decoder_type == "Moses" :
-        	Decoder_object = Decoder_Moses(parser)
-                if not showweightsflag == "":
-                        decoder_out, decoder_err = Decoder_object.show_weights()
+    if decoder_type == "Moses" :
+        Decoder_object = Decoder_Moses(parser)
+        if not showweightsflag == "":
+            decoder_out, decoder_err = Decoder_object.show_weights()
                         # write weights to stdout
-                        sys.stdout.write(''.join(decoder_out))
-                        sys.stdout.flush()
+            sys.stdout.write(''.join(decoder_out))
+            sys.stdout.flush()
 
-                        sys.exit(1)
+            sys.exit(1)
 
 	elif decoder_type == "Moses_nbest" :
 		decoder_nbestfile = '/dev/stdout'
